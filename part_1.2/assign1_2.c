@@ -1,5 +1,5 @@
 /*
- * assign1_1.c
+ * assign2_1.c
  *
  * Contains code for setting up and finishing the simulation.
  * NOTE: YOU SHOULD IMPLEMENT NOT HAVE TO LOOK HERE, IMPLEMENT YOUR CODE IN
@@ -14,6 +14,7 @@
 #include "file.h"
 #include "timer.h"
 #include "simulate.h"
+#include <omp.h>
 
 typedef double (*func_t)(double x);
 
@@ -132,6 +133,7 @@ int main(int argc, char *argv[])
         fill(current, 2, i_max/4, 0, 2*3.14, sin);
     }
 
+
     timer_start();
 
     /* Call the actual simulation that should be implemented in simulate.c. */
@@ -139,7 +141,7 @@ int main(int argc, char *argv[])
 
     time = timer_end();
     printf("Took %g seconds\n", time);
-    printf("Normalized: %g seconds\n", time / (i_max * t_max));
+    printf("Normalized: %g seconds\n", time / (1. * i_max * t_max));
 
     file_write_double_array("result.txt", ret, i_max);
 
@@ -151,14 +153,13 @@ int main(int argc, char *argv[])
 }
 
 
+
+
 /**-----------------------------------------------------------------------------------------------*/
 
 //EXPERIMENT CODE
 
-// typedef double* (*simulate_func_t)(const int, const int, const int,
-//                                    double*, double*, double*);
-//
-// void runner(simulate_func_t sim_func, int t_max, int i_max, int num_threads, double* out_time) {
+// void runner(int t_max, int i_max, int num_threads, double* out_time) {
 //     double *old, *current, *next;
 //     double time;
 //
@@ -174,15 +175,14 @@ int main(int argc, char *argv[])
 //     memset(current, 0, i_max * sizeof(double));
 //     memset(next, 0, i_max * sizeof(double));
 //
-//     /* Initialize first two generations (sinus by default) */
 //     fill(old, 1, i_max / 4, 0, 2*3.14, sin);
 //     fill(current, 2, i_max / 4, 0, 2*3.14, sin);
 //
 //     timer_start();
-//     sim_func(i_max, t_max, num_threads, old, current, next);  // choose implementation based on version if needed
+//     simulate(i_max, t_max, num_threads, old, current, next);
 //     time = timer_end();
 //
-//     *out_time = time;  // return elapsed time
+//     *out_time = time;
 //
 //     free(old);
 //     free(current);
@@ -190,7 +190,6 @@ int main(int argc, char *argv[])
 // }
 //
 //
-// //EXPERIMENT 1: check report for more details
 // void experiment1(void) {
 //     FILE *fp = fopen("./results_ex1.csv", "w");
 //     if (!fp) {
@@ -198,91 +197,58 @@ int main(int argc, char *argv[])
 //         return;
 //     }
 //
-//     fprintf(fp, "simulate_version,i_max,t_max,num_threads,time_seconds,normalized_time\n");
+//     fprintf(fp, "i_max,t_max,num_threads,time_seconds,normalized_time\n");
 //
-//
+//     //EXPERIMENT 1: MP
 //     int i_max_values[] = {1000, 10000, 100000, 1000000, 10000000};
 //     int num_i = sizeof(i_max_values) / sizeof(i_max_values[0]);
 //
 //     int num_threads = 4;
 //     int t_max = 100;
 //
-//     for (int version = 1; version <= 3; version++) {
-//         for (int i = 0; i < num_i; i++) {
-//             int i_max = i_max_values[i];
-//             double elapsed_time;
 //
+//     for (int i = 0; i < num_i; i++) {
+//         int i_max = i_max_values[i];
+//         double elapsed_time;
 //
-//             if (version==1)
-//                 runner(simulateSequential_v1, t_max, i_max, num_threads, &elapsed_time);
-//             else  if (version==2)
-//                 runner(simulate_v2, t_max, i_max, num_threads, &elapsed_time);
-//             else
-//                 runner(simulate, t_max, i_max, num_threads, &elapsed_time);
+//         runner(t_max, i_max, num_threads, &elapsed_time);
 //
-//             // Write results to CSV
-//             fprintf(fp, "%d,%d,%d,%d,%g,%g\n",
-//                     version, i_max, t_max, num_threads, elapsed_time, elapsed_time / (i_max * t_max));
+//         fprintf(fp, "%d,%d,%d,%g,%g\n", i_max, t_max, num_threads, elapsed_time, elapsed_time / (i_max * t_max));
 //
-//             printf("Version %d, i_max=%d -> %g seconds\n", version, i_max, elapsed_time);
-//         }
+//         printf("i_max=%d -> %g seconds\n", i_max, elapsed_time);
 //     }
+//
 //
 //     fclose(fp);
 //     printf("All results saved to results_ex1.csv\n");
 // }
-//
-// //EXPERIMENT 2: check report for more details
 // void experiment2(void) {
-//     FILE *fp = fopen("./results_ex2.csv", "w");
-//     if (!fp) {
-//         perror("Could not open results_ex2.csv");
-//         return;
-//     }
+//     const char* schedulers[] = {"static", "dynamic", "guided"};
+//     int num_schedulers = sizeof(schedulers) / sizeof(schedulers[0]);
 //
-//     fprintf(fp, "i_max,t_max,num_threads,time_seconds,speedup\n");
+//     int i_max_values[] = {1000, 10000, 100000, 1000000, 10000000};
+//     int num_i = sizeof(i_max_values)/sizeof(i_max_values[0]);
+//     int t_max = 100;
+//     int num_threads = 4;
 //
-//     // You can adjust these
-//     int i_max_values[] = {1000, 100000, 1000000};
-//     int t_max_values[] = {100, 1000, 4000};
+//     FILE *fp = fopen("results_ex2.csv", "w");
+//     if (!fp) { perror("Could not open results_ex2.csv"); return; }
+//     fprintf(fp, "schedule,i_max,t_max,num_threads,time_seconds,normalized_time\n");
 //
-//     int num_i = sizeof(i_max_values) / sizeof(i_max_values[0]);
-//     int num_t = sizeof(t_max_values) / sizeof(t_max_values[0]);
+//     for (int s = 0; s < num_schedulers; s++) {
+//         const char* sched = schedulers[s];
 //
-//     int thread_counts[] = {1, 2, 4, 6, 8, 12, 14, 16};
-//     int num_threads_options = sizeof(thread_counts) / sizeof(thread_counts[0]);
+//         for (int i = 0; i < num_i; i++) {
+//             int i_max = i_max_values[i];
+//             double elapsed_time;
 //
+//             setenv("OMP_SCHEDULE", sched, 1); // correct way for runtime scheduling
+//             runner(t_max, i_max, num_threads, &elapsed_time);
 //
-//     for (int a = 0; a < num_i; a++) {
-//         for (int b = 0; b < num_t; b++) {
-//
-//             int i_max = i_max_values[a];
-//             int t_max = t_max_values[b];
-//
-//             double base_time = 0.0;
-//
-//             printf("\n--- i_max=%d, t_max=%d ---\n", i_max, t_max);
-//
-//             for (int tc = 0; tc < num_threads_options; tc++) {
-//
-//                 int num_threads = thread_counts[tc];
-//                 double elapsed_time;
-//
-//                 // run simulation (always using optimized v3)
-//                 runner(simulate, t_max, i_max, num_threads, &elapsed_time);
-//
-//                 // first run (1 thread) becomes baseline
-//                 if (num_threads == 1)
-//                     base_time = elapsed_time;
-//
-//                 double speedup = base_time / elapsed_time;
-//
-//                 fprintf(fp, "%d,%d,%d,%g,%g\n",
-//                         i_max, t_max, num_threads, elapsed_time, speedup);
-//
-//                 printf("Threads=%d -> %g seconds, Speedup=%.2fx\n",
-//                        num_threads, elapsed_time, speedup);
-//             }
+//             fprintf(fp, "%s,%d,%d,%d,%g,%g\n",
+//                     sched, i_max, t_max, num_threads,
+//                     elapsed_time, elapsed_time / (i_max * t_max));
+//             printf("Schedule %s, i_max=%d -> %g seconds\n", sched, i_max, elapsed_time);
 //         }
 //     }
 //
@@ -290,10 +256,51 @@ int main(int argc, char *argv[])
 //     printf("All results saved to results_ex2.csv\n");
 // }
 //
+// void experiment3(void) {
+//     int thread_counts[] = {1, 2, 4, 8, 16, 26};
+//     int num_threads_cases = sizeof(thread_counts) / sizeof(thread_counts[0]);
+//
+//     const char *schedulers[] = {"static", "dynamic", "guided"};
+//     int num_schedulers = sizeof(schedulers) / sizeof(schedulers[0]);
+//
+//     int i_max = 10000;
+//     int t_max = 100;
+//
+//     FILE *fp = fopen("results_ex3.csv", "w");
+//     if (!fp) { perror("Could not open results_ex3.csv"); return; }
+//     fprintf(fp, "num_threads,i_max,t_max,scheduler,time_seconds,normalized_time\n");
+//
+//     for (int s = 0; s < num_schedulers; s++) {
+//         const char* sched = schedulers[s];
+//         setenv("OMP_SCHEDULE", sched, 1); // set schedule for all threads
+//
+//         for (int t = 0; t < num_threads_cases; t++) {
+//             int num_threads = thread_counts[t];
+//             double elapsed_time;
+//
+//             runner(t_max, i_max, num_threads, &elapsed_time);
+//
+//             fprintf(fp, "%d,%d,%d,%s,%g,%g\n",
+//                     num_threads, i_max, t_max, sched,
+//                     elapsed_time, elapsed_time / (i_max * t_max));
+//
+//             printf("Threads=%d, Scheduler=%s -> %g seconds\n",
+//                    num_threads, sched, elapsed_time);
+//         }
+//     }
+//
+//     fclose(fp);
+//     printf("All results saved to results_ex3.csv\n");
+// }
+//
+//
 //
 //
 // int main(void)
 // {
+//     experiment1();
 //     experiment2();
+//     experiment3();
 //     return 0;
 // }
+
