@@ -7,8 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-
 #include "simulate.h"
+
 
 
 /* Add any global variables you may need. */
@@ -56,92 +56,88 @@ static const double c = 0.15;
 /**-----------Sequential Implementation-----------*/
 //EXPERIMENT: Sequential code
 
-// double *simulate(const int i_max, const int t_max, const int num_threads,
-//         double *old_array, double *current_array, double *next_array)
-// {
-//     for (int t = 0; t < t_max; t++) {
-//         for (int i = 1; i < i_max - 1; i++) {
-//             next_array[i] = 2 * current_array[i] - old_array[i]
-//                             + c * (current_array[i-1] - 2*current_array[i] + current_array[i+1]);
-//         }
-//
-//         rotate_arrays(&old_array, &current_array, &next_array);
-//     }
-//     return current_array;
-// }
-// 1000 100 2 sin
-// Took 3.8e-05 seconds
-// Normalized: 3.8e-10 seconds
+double *simulateSequential_v1(const int i_max, const int t_max, const int num_threads,
+        double *old_array, double *current_array, double *next_array)
+{
+        for (int t = 0; t < t_max; t++) {
+            for (int i = 1; i < i_max - 1; i++) {
+                next_array[i] = 2 * current_array[i] - old_array[i]
+                                + c * (current_array[i-1] - 2*current_array[i] + current_array[i+1]);
+            }
+
+            rotate_arrays(&old_array, &current_array, &next_array);
+        }
+        return current_array;
+}
 /**----------------------------------------*/
 
 
 /**-----------Concurrent Implementation Without Barriers-----------*/
 //EXPERIMENT: Chunk_Threading Approach: threads are not reused
+typedef struct {
+    int start, end;
+    double *prev_array;
+    double *current_array;
+    double *next_array;
+} WorkerArgs_v2;
 
-// typedef struct {
-//     int start, end;
-//     double *prev_array;
-//     double *current_array;
-//     double *next_array;
-// } WorkerArgs;
-//
-// void* worker(void* arg) {
-//     WorkerArgs *args = (WorkerArgs*) arg;
-//     for (int i = args->start; i < args->end; i++) {
-//        args->next_array[i] = 2  * args->current_array[i]
-//                                 - args->prev_array[i]
-//                                 +  c * (args->current_array[i-1] - 2*args->current_array[i] +  args->current_array[i+1]);
-//     }
-//     return NULL;
-// }
-//
-// double *simulate(const int i_max, const int t_max, const int num_threads,
-//         double *old_array, double *current_array, double *next_array)
-// {
-//     printf("Test_drive:18\n");
-//     pthread_t threads[num_threads];
-//     WorkerArgs args[num_threads];
-//
-//     const int total_interior_points = i_max - 2;  // Points we actually compute
-//     const int chunk_size = total_interior_points / num_threads;
-//     const int remainder = total_interior_points % num_threads;
-//
-//     for (int t = 0; t < t_max; t++) {
-//         int start_index = 1;
-//
-//         for (int thr = 0; thr < num_threads; thr++) {
-//             int range = chunk_size;
-//             if (thr < remainder) {
-//                 range++;
-//             }
-//
-//             args[thr].start = start_index;
-//             args[thr].end = start_index + range;
-//
-//             if (args[thr].end > i_max - 1 || thr==num_threads-1) {
-//                 args[thr].end = i_max - 1;
-//             }
-//
-//             args[thr].prev_array = old_array;
-//             args[thr].current_array = current_array;
-//             args[thr].next_array = next_array;
-//
-//             pthread_create(&threads[thr], NULL, worker, &args[thr]);
-//
-//             start_index+=range;
-//         }
-//         for (int th = 0; th < num_threads; th++)
-//             pthread_join(threads[th], NULL);
-//         rotate_arrays(&old_array, &current_array, &next_array);
-//     }
-//     return current_array;
-// }
+void* worker_v2(void* arg) {
+    WorkerArgs_v2 *args = (WorkerArgs_v2*) arg;
+    for (int i = args->start; i < args->end; i++) {
+       args->next_array[i] = 2  * args->current_array[i]
+                                - args->prev_array[i]
+                                +  c * (args->current_array[i-1] - 2*args->current_array[i] +  args->current_array[i+1]);
+    }
+    return NULL;
+}
+
+double *simulate_v2(const int i_max, const int t_max, const int num_threads,
+        double *old_array, double *current_array, double *next_array)
+{
+    pthread_t threads[num_threads];
+    WorkerArgs_v2 args[num_threads];
+
+    const int total_interior_points = i_max - 2;  // Points we actually compute
+    const int chunk_size = total_interior_points / num_threads;
+    const int remainder = total_interior_points % num_threads;
+
+    for (int t = 0; t < t_max; t++) {
+        int start_index = 1;
+
+        for (int thr = 0; thr < num_threads; thr++) {
+            int range = chunk_size;
+            if (thr < remainder) {
+                range++;
+            }
+
+            args[thr].start = start_index;
+            args[thr].end = start_index + range;
+
+            if (args[thr].end > i_max - 1 || thr==num_threads-1) {
+                args[thr].end = i_max - 1;
+            }
+
+            args[thr].prev_array = old_array;
+            args[thr].current_array = current_array;
+            args[thr].next_array = next_array;
+
+            pthread_create(&threads[thr], NULL, worker_v2, &args[thr]);
+
+            start_index+=range;
+        }
+        for (int th = 0; th < num_threads; th++)
+            pthread_join(threads[th], NULL);
+        rotate_arrays(&old_array, &current_array, &next_array);
+    }
+    return current_array;
+}
 // 1000 100 2 sin
 // Took 0.004433 seconds
 // Normalized: 4.433e-08 seconds
 /**----------------------------------------*/
 
 
+/**-----------Concurrent Implementation With Barriers-----------*/
 //EXPERIMENT: Chunk_Threading Approach with Barriers
 typedef struct {
     int id;
@@ -158,7 +154,6 @@ typedef struct {
 
 void* worker(void* arg) {
     WorkerArgs *args = (WorkerArgs*) arg;
-
     for (int t = 0; t < args->t_max; t++) {
         pthread_barrier_wait(args->barrier);
 
@@ -244,6 +239,7 @@ double *simulate(const int i_max, const int t_max, const int num_threads,
 // 1000 100 2 sin
 // Took 0.00164351 seconds
 // Normalized: 1.64351e-08 seconds
+/**----------------------------------------*/
 
 
 
